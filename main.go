@@ -8,20 +8,6 @@ import (
 	linuxproc "github.com/c9s/goprocinfo/linux"
 )
 
-// type CPUStat struct {
-//     Id        string `json:"id"`
-//     User      uint64 `json:"user"`
-//     Nice      uint64 `json:"nice"`
-//     System    uint64 `json:"system"`
-//     Idle      uint64 `json:"idle"`
-//     IOWait    uint64 `json:"iowait"`
-//     IRQ       uint64 `json:"irq"`
-//     SoftIRQ   uint64 `json:"softirq"`
-//     Steal     uint64 `json:"steal"`
-//     Guest     uint64 `json:"guest"`
-//     GuestNice uint64 `json:"guest_nice"`
-// }
-
 type MyCPUStats struct {
 	Cpu0 float32
 	Cpu1 float32
@@ -31,14 +17,13 @@ type MyCPUStats struct {
 
 func main() {
 
-	//var prevCPUStats linuxproc.CPUStat
-	//var currCPUStats linuxproc.CPUStat
+	time_interval := 1 // this number represents seconds
 
 	currCPUStats := ReadCPUStats()
 	prevCPUStats := ReadCPUStats()
 
 	for {
-		time.Sleep(time.Second * 4)
+		time.Sleep(time.Second * time.Duration(time_interval))
 
 		currCPUStats = ReadCPUStats()
 		calcMyCPUStats(currCPUStats, prevCPUStats)
