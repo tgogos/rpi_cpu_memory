@@ -1,8 +1,10 @@
 package main
 
 import (
+	"bytes"
 	"fmt"
 	"log"
+	"net/http"
 	"time"
 
 	linuxproc "github.com/c9s/goprocinfo/linux"
@@ -18,16 +20,36 @@ type MyCPUStats struct {
 func main() {
 
 	time_interval := 1 // this number represents seconds
+	push_to_influx := true
+	influxUrl := "http://10.143.0.218:8086"
+	cpuDBname := "pi_cpu"
+	// memoDBname := "pi_memo"
 
 	currCPUStats := ReadCPUStats()
 	prevCPUStats := ReadCPUStats()
+	info := ReadMemoInfo()
 
 	for {
 		time.Sleep(time.Second * time.Duration(time_interval))
 
 		currCPUStats = ReadCPUStats()
-		calcMyCPUStats(currCPUStats, prevCPUStats)
+		coreStats := calcMyCPUStats(currCPUStats, prevCPUStats)
+		fmt.Println(coreStats)
+		if push_to_influx {
+			url := influxUrl + "/write?db=" + cpuDBname
+			body := []byte("")
+			req, err := http.NewRequest("POST", url, bytes.NewBuffer(body))
+			if err != nil {
+				log.Fatal("could not send POST")
+			}
+			fmt.Println(req)
+		}
 		prevCPUStats = currCPUStats
+
+		info = ReadMemoInfo()
+		memUsed := info.MemTotal - info.MemAvailable
+		fmt.Println("total: ", info.MemTotal, " free: ", info.MemFree)
+		fmt.Printf("Memory used: %d\n\n\n", memUsed)
 
 	}
 
@@ -40,15 +62,6 @@ func ReadCPUStats() *linuxproc.Stat {
 	}
 	// fmt.Println(stat)
 	return stat
-
-	// for _, s := range stat.CPUStats {
-	//     // s.User
-	//     // s.Nice
-	//     // s.System
-	//     // s.Idle
-	//     // s.IOWait
-	//     fmt.Println(s)
-	// }
 }
 
 func calcMyCPUStats(curr, prev *linuxproc.Stat) *MyCPUStats {
@@ -65,7 +78,7 @@ func calcMyCPUStats(curr, prev *linuxproc.Stat) *MyCPUStats {
 	stats.Cpu2 = calcSingleCoreUsage(curr.CPUStats[2], prev.CPUStats[2])
 	stats.Cpu3 = calcSingleCoreUsage(curr.CPUStats[3], prev.CPUStats[3])
 
-	fmt.Printf("Stats:\n%+v", stats)
+	fmt.Printf("CPU stats:\n%+v\n", stats)
 
 	return &stats
 }
@@ -111,4 +124,18 @@ func calcSingleCoreUsage(curr, prev linuxproc.CPUStat) float32 {
 	CPU_Percentage := (float32(totald) - float32(idled)) / float32(totald)
 
 	return CPU_Percentage
+}
+
+//
+//  Memory
+//
+//
+
+func ReadMemoInfo() *linuxproc.MemInfo {
+	info, err := linuxproc.ReadMemInfo("/proc/meminfo")
+	if err != nil {
+		log.Fatal("info read fail")
+	}
+	// fmt.Printf("Memory info struct:\n%+v", info)
+	return info
 }
