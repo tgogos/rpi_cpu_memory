@@ -29,6 +29,7 @@ type MyCPUStats struct {
 //   - http://stackoverflow.com/questions/41224738/how-to-calculate-memory-usage-from-proc-meminfo-like-htop/
 //
 type MyMemoInfo struct {
+	TotalMachine       uint64
 	TotalUsed          uint64
 	Buffers            uint64
 	Cached             uint64
@@ -39,9 +40,11 @@ func main() {
 
 	time_interval := 1 // this number represents seconds
 	push_to_influx := true
+	print_std_out := true
+
 	influxUrl := "http://10.143.0.218:8086"
 	cpuDBname := "pi_cpu"
-	// memoDBname := "pi_memo"
+	memoDBname := "pi_memo"
 
 	currCPUStats := ReadCPUStats()
 	prevCPUStats := ReadCPUStats()
@@ -50,8 +53,15 @@ func main() {
 	for {
 		time.Sleep(time.Second * time.Duration(time_interval))
 
+		//
+		//	CPU stuff below...
+		//
 		currCPUStats = ReadCPUStats()
 		coreStats := calcMyCPUStats(currCPUStats, prevCPUStats)
+
+		if print_std_out {
+			fmt.Printf("CPU stats: %+v", coreStats)
+		}
 
 		if push_to_influx {
 			url := influxUrl + "/write?db=" + cpuDBname
@@ -70,14 +80,38 @@ func main() {
 		}
 		prevCPUStats = currCPUStats
 
+		//
+		//	Memory stuff below...
+		//
 		info = ReadMemoInfo()
 
 		var mmInfo MyMemoInfo
+		mmInfo.TotalMachine = info.MemTotal
 		mmInfo.TotalUsed = info.MemTotal - info.MemFree
 		mmInfo.Buffers = info.Buffers
 		mmInfo.Cached = info.Cached + info.SReclaimable - info.Shmem
 		mmInfo.NonCacheNonBuffers = mmInfo.TotalUsed - (mmInfo.Buffers + mmInfo.Cached)
-		fmt.Printf(" | Memory info:\t%+v\n", mmInfo)
+		if print_std_out {
+			fmt.Printf(" | Memory info: %+v\n", mmInfo)
+		}
+
+		if push_to_influx {
+			url := influxUrl + "/write?db=" + memoDBname
+			body := []byte("TotalMachine,memTag=TotalMachine value=" + strconv.Itoa(int(mmInfo.TotalMachine)) + "\n" +
+				"TotalUsed,memTag=TotalUsed value=" + strconv.Itoa(int(mmInfo.TotalUsed)) + "\n" +
+				"Buffers,memTag=Buffers value=" + strconv.Itoa(int(mmInfo.Buffers)) + "\n" +
+				"Cached,memTag=Cached value=" + strconv.Itoa(int(mmInfo.Cached)) + "\n" +
+				"NonCacheNonBuffers,memTag=NonCacheNonBuffers value=" + strconv.Itoa(int(mmInfo.NonCacheNonBuffers)))
+
+			// fmt.Printf("%s", body)
+			req, err := http.NewRequest("POST", url, bytes.NewBuffer(body))
+			hc := http.Client{}
+			_, err = hc.Do(req)
+			if err != nil {
+				log.Fatal("could not send POST")
+			}
+			// fmt.Println(resp)
+		}
 
 	}
 
@@ -106,7 +140,7 @@ func calcMyCPUStats(curr, prev *linuxproc.Stat) *MyCPUStats {
 	stats.Cpu2 = calcSingleCoreUsage(curr.CPUStats[2], prev.CPUStats[2])
 	stats.Cpu3 = calcSingleCoreUsage(curr.CPUStats[3], prev.CPUStats[3])
 
-	fmt.Printf("CPU stats:\t%+v", stats)
+	// fmt.Printf("CPU stats: %+v", stats)
 
 	return &stats
 }
