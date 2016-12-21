@@ -11,11 +11,28 @@ import (
 	linuxproc "github.com/c9s/goprocinfo/linux"
 )
 
+//
+// cpu usage values are read from the /proc/stat pseudo-file with the help of the goprocinfo package...
+// For the calculation two measurements are neaded: 'current' and 'previous'...
+// More at: func calcSingleCoreUsage(curr, prev)...
+//
 type MyCPUStats struct {
 	Cpu0 float32
 	Cpu1 float32
 	Cpu2 float32
 	Cpu3 float32
+}
+
+//
+// memory values are read from the /proc/meminfo pseudo-file with the help of the goprocinfo package...
+// how are they calculated? Like 'htop' command, see question:
+//   - http://stackoverflow.com/questions/41224738/how-to-calculate-memory-usage-from-proc-meminfo-like-htop/
+//
+type MyMemoInfo struct {
+	TotalUsed          uint64
+	Buffers            uint64
+	Cached             uint64
+	NonCacheNonBuffers uint64
 }
 
 func main() {
@@ -35,7 +52,7 @@ func main() {
 
 		currCPUStats = ReadCPUStats()
 		coreStats := calcMyCPUStats(currCPUStats, prevCPUStats)
-		fmt.Println(coreStats)
+
 		if push_to_influx {
 			url := influxUrl + "/write?db=" + cpuDBname
 			body := []byte("cpu0,coreID=0 value=" + strconv.FormatFloat(float64(coreStats.Cpu0), 'f', -1, 32) + "\n" +
@@ -45,18 +62,22 @@ func main() {
 			// fmt.Printf("%s", body)
 			req, err := http.NewRequest("POST", url, bytes.NewBuffer(body))
 			hc := http.Client{}
-			resp, err := hc.Do(req)
+			_, err = hc.Do(req)
 			if err != nil {
 				log.Fatal("could not send POST")
 			}
-			fmt.Println(resp)
+			// fmt.Println(resp)
 		}
 		prevCPUStats = currCPUStats
 
 		info = ReadMemoInfo()
-		memUsed := info.MemTotal - info.MemAvailable
-		fmt.Println("total: ", info.MemTotal, " free: ", info.MemFree)
-		fmt.Printf("Memory used: %d\n\n\n", memUsed)
+
+		var mmInfo MyMemoInfo
+		mmInfo.TotalUsed = info.MemTotal - info.MemFree
+		mmInfo.Buffers = info.Buffers
+		mmInfo.Cached = info.Cached + info.SReclaimable - info.Shmem
+		mmInfo.NonCacheNonBuffers = mmInfo.TotalUsed - (mmInfo.Buffers + mmInfo.Cached)
+		fmt.Printf(" | Memory info:\t%+v\n", mmInfo)
 
 	}
 
@@ -85,7 +106,7 @@ func calcMyCPUStats(curr, prev *linuxproc.Stat) *MyCPUStats {
 	stats.Cpu2 = calcSingleCoreUsage(curr.CPUStats[2], prev.CPUStats[2])
 	stats.Cpu3 = calcSingleCoreUsage(curr.CPUStats[3], prev.CPUStats[3])
 
-	fmt.Printf("CPU stats:\n%+v\n", stats)
+	fmt.Printf("CPU stats:\t%+v", stats)
 
 	return &stats
 }
