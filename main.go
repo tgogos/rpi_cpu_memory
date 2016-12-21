@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"strconv"
 	"time"
 
 	linuxproc "github.com/c9s/goprocinfo/linux"
@@ -37,12 +38,18 @@ func main() {
 		fmt.Println(coreStats)
 		if push_to_influx {
 			url := influxUrl + "/write?db=" + cpuDBname
-			body := []byte("")
+			body := []byte("cpu0,coreID=0 value=" + strconv.FormatFloat(float64(coreStats.Cpu0), 'f', -1, 32) + "\n" +
+				"cpu1,coreID=1 value=" + strconv.FormatFloat(float64(coreStats.Cpu0), 'f', -1, 32) + "\n" +
+				"cpu2,coreID=2 value=" + strconv.FormatFloat(float64(coreStats.Cpu0), 'f', -1, 32) + "\n" +
+				"cpu3,coreID=3 value=" + strconv.FormatFloat(float64(coreStats.Cpu0), 'f', -1, 32))
+			// fmt.Printf("%s", body)
 			req, err := http.NewRequest("POST", url, bytes.NewBuffer(body))
+			hc := http.Client{}
+			resp, err := hc.Do(req)
 			if err != nil {
 				log.Fatal("could not send POST")
 			}
-			fmt.Println(req)
+			fmt.Println(resp)
 		}
 		prevCPUStats = currCPUStats
 
